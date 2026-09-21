@@ -51,41 +51,54 @@ def getUsedFVarIdsOfLet (decl : LetDecl pu) : Array FVarId := Id.run do
   return vars
 
 /--
-Extract all free variables used in a `Code` block.
+Extract all free variables used in a `Code` block that are not bound within that block.
+Accurately identifies outer dependencies without inflating the dependency DAG with
+internally bound variables.
 -/
-partial def collectUsedFVarsInCode (c : Code pu) : FVarIdSet :=
-  let rec visit (c : Code pu) (s : FVarIdSet) : FVarIdSet :=
+partial def collectFreeVarsInCode (c : Code pu) : FVarIdSet :=
+  let rec visit (c : Code pu) (bound : FVarIdSet) (used : FVarIdSet) : FVarIdSet × FVarIdSet :=
     match c with
     | .let decl k =>
-      let s := getUsedFVarIdsOfLet decl |>.foldl (init := s) fun s fv => s.insert fv
-      visit k s
+      let used := getUsedFVarIdsOfLet decl |>.foldl (init := used) fun s fv => s.insert fv
+      let bound := bound.insert decl.fvarId
+      visit k bound used
     | .jp decl k | .fun decl k _ =>
-      let s := visit decl.value s
-      visit k s
+      let bound := bound.insert decl.fvarId
+      let (bound, used) := decl.params.foldl (init := (bound, used)) fun (b, u) p => (b.insert p.fvarId, u)
+      let (bound, used) := visit decl.value bound used
+      visit k bound used
     | .cases cs =>
-      let s := s.insert cs.discr
-      cs.alts.foldl (init := s) fun s alt => visit alt.getCode s
+      let used := used.insert cs.discr
+      cs.alts.foldl (init := (bound, used)) fun (b, u) alt =>
+        match alt with
+        | .alt _ ps k _ =>
+          let b := ps.foldl (init := b) fun b p => b.insert p.fvarId
+          visit k b u
+        | .default k | .ctorAlt _ k _ =>
+          visit k b u
     | .jmp fvarId args =>
-      let s := s.insert fvarId
-      args.foldl (init := s) fun s arg =>
+      let used := used.insert fvarId
+      let used := args.foldl (init := used) fun s arg =>
         match arg with
         | .fvar fv => s.insert fv
         | _ => s
+      (bound, used)
     | .return fvarId =>
-      s.insert fvarId
-    | .unreach .. => s
+      (bound, used.insert fvarId)
+    | .unreach .. => (bound, used)
     | .oset fv1 _ arg k _ =>
-      let s := s.insert fv1
-      let s := match arg with | .fvar fv2 => s.insert fv2 | _ => s
-      visit k s
+      let used := used.insert fv1
+      let used := match arg with | .fvar fv2 => used.insert fv2 | _ => used
+      visit k bound used
     | .uset fv1 _ fv2 k _ | .sset fv1 _ _ fv2 _ k _ =>
-      let s := s.insert fv1 |>.insert fv2
-      visit k s
+      let used := used.insert fv1 |>.insert fv2
+      visit k bound used
     | .inc (fvarId := fv) (k := k) .. | .dec (fvarId := fv) (k := k) ..
     | .del (fvarId := fv) (k := k) .. | .setTag (fvarId := fv) (k := k) .. =>
-      let s := s.insert fv
-      visit k s
-  visit c {}
+      let used := used.insert fv
+      visit k bound used
+  let (bound, used) := visit c {} {}
+  used.filter fun fv => !bound.contains fv
 
 /--
 Build the forward dependency DAG: mapping each variable `v` to the list of declarations
@@ -101,8 +114,9 @@ partial def buildForwardDepGraph (c : Code pu) : FVarIdMap (Array FVarId) :=
         g.insert fv (succs.push decl.fvarId)
       visit k g
     | .jp decl k | .fun decl k _ =>
-      let used := collectUsedFVarsInCode decl.value
-      let g := used.foldl (init := g) fun g fv =>
+      let freeVars := collectFreeVarsInCode decl.value
+      let freeVars := decl.params.foldl (init := freeVars) fun s p => s.erase p.fvarId
+      let g := freeVars.foldl (init := g) fun g fv =>
         let succs := g.getD fv #[]
         g.insert fv (succs.push decl.fvarId)
       let g := visit decl.value g

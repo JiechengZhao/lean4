@@ -323,6 +323,13 @@ theorem usetFast_unique (a : ByteArray) (i : USize) (v : UInt8)
     (h_bound : i.toNat < a.size) (h_u : Unique a) : (usetFast a i v h_bound h_u).size = a.size := by
   cases a; exact Array.size_set ..
 
+@[simp] theorem size_uset (a : ByteArray) (i : USize) (v : UInt8) (h : i.toNat < a.size) : (a.uset i v h).size = a.size := by
+  cases a; exact Array.size_set ..
+
+@[simp] theorem MutByteArray.size_uset (b : MutByteArray σ) (i : USize) (v : UInt8) (h : i.toNat < b.size) : (b.uset i v h).size = b.size := by
+  show (b.arr.uset i v h).size = b.arr.size
+  exact ByteArray.size_uset b.arr i v h
+
 /--
 Proof-driven in-place update of all bytes in a byte array with a constant value.
 Guarantees zero-cost in-place mutation without RC checks or branches.
