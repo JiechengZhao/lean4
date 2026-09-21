@@ -176,31 +176,71 @@ def MutByteArray.uget (b : MutByteArray σ) (i : USize) (h : i.toNat < b.size :=
   b.arr.uget i h
 
 /--
-Ensures physical exclusivity of a {name}`ByteArray`.
-At runtime, checks if the array is uniquely owned ({lit}`is_exclusive`);
-if so, returns the array as-is with zero copying; otherwise, performs an isolated clone.
-Logically, {name}`ensureExclusive` is definitionally the identity function.
+Raw physical runtime barrier: executes {lit}`lean_sarray_ensure_exclusive` at runtime.
+If reference count is 1, returns the buffer as-is; otherwise creates an unshared private clone.
 -/
 @[extern "lean_byte_array_ensure_exclusive"]
+opaque ensureExclusiveCore (a : ByteArray) : ByteArray
+
+/-- Implementation of {lit}`ensureExclusive` with physical barrier. -/
+def ensureExclusive.impl (a : ByteArray) : ByteArray :=
+  ensureExclusiveCore a
+
+/--
+Physical exclusivity barrier: ensures the underlying buffer has reference count 1.
+If already exclusive, it passes through with zero allocation; if shared, it creates a private copy.
+Logically, it is definitionally the identity function.
+-/
+@[implemented_by ensureExclusive.impl]
 def ensureExclusive (a : ByteArray) : ByteArray := a
 
-@[simp] theorem ensureExclusive_eq (a : ByteArray) : ensureExclusive a = a := rfl
+/--
+Implementation of {lit}`withIsolatedBuffer` with check-out physical exclusivity gate.
+At the entrance (check-out), physical exclusivity is established via {name}`ensureExclusive.impl`.
+Within the scope, operations proceed in-place with zero RC overhead.
+At exit (check-in), the buffer is checked back in by unwrapping {name}`MutByteArray.arr`.
+-/
+@[noinline]
+def withIsolatedBuffer.impl (a : ByteArray) (f : (σ : Type) → MutByteArray σ → MutByteArray σ) : ByteArray :=
+  let checkedOut := ensureExclusive.impl a
+  (f Unit ⟨checkedOut⟩).arr
+
+/--
+Specification of {lit}`withIsolatedBuffer` for theorem proving.
+Pure functional specification: definitionally unwraps the function application directly on {lit}`a`.
+-/
+def withIsolatedBuffer.spec (a : ByteArray) (f : (σ : Type) → MutByteArray σ → MutByteArray σ) : ByteArray :=
+  (f Unit ⟨a⟩).arr
 
 /--
 Executes a scoped in-place mutation computation on a {name}`ByteArray`.
-Within the scoped region {lean}`f`, operations on {name}`MutByteArray` operate in-place with zero RC overhead.
-At the entrance, physical exclusivity is ensured via {name}`ensureExclusive`, guaranteeing that shared
-buffers cannot be corrupted.
-Logically, {name}`withIsolatedBuffer` evaluates definitionally to pure computation.
-Referential transparency and logical equivalence are 100% preserved.
+Uses the check-out / check-in model:
+1. Check-out: Physical exclusivity is ensured at the entrance.
+2. Isolation: Confined to rank-2 region {lit}`σ` with zero RC overhead.
+3. Check-in: Unwrapped and returned as a pure immutable {name}`ByteArray`.
+-/
+@[implemented_by withIsolatedBuffer.impl]
+def withIsolatedBuffer (a : ByteArray) (f : (σ : Type) → MutByteArray σ → MutByteArray σ) : ByteArray :=
+  withIsolatedBuffer.spec a f
+
+/--
+Semantic Conformance Theorem:
+{name}`withIsolatedBuffer` evaluates definitionally to its pure specification {name}`withIsolatedBuffer.spec`.
+-/
+theorem withIsolatedBuffer_eq_spec (a : ByteArray) (f : (σ : Type) → MutByteArray σ → MutByteArray σ) :
+    withIsolatedBuffer a f = withIsolatedBuffer.spec a f := rfl
+
+/--
+Zero-cost scoped in-place mutation for buffers with an existing constructive {name}`Unique` proof.
+Bypasses the entry-time runtime exclusivity check entirely because uniqueness is verified at compile time.
 -/
 @[noinline]
-def withIsolatedBuffer (a : ByteArray) (f : (σ : Type) → MutByteArray σ → MutByteArray σ) : ByteArray :=
-  (f Unit ⟨ensureExclusive a⟩).arr
+def withUniqueBuffer (a : ByteArray) (_hu : Unique a) (f : (σ : Type) → MutByteArray σ → MutByteArray σ) : ByteArray :=
+  (f Unit ⟨a⟩).arr
 
-/-- Semantic Conformance Theorem for scoped in-place mutation: definitionally equal to pure computation. -/
-@[simp] theorem withIsolatedBuffer_eval (a : ByteArray) (f : (σ : Type) → MutByteArray σ → MutByteArray σ) :
-    withIsolatedBuffer a f = (f Unit ⟨a⟩).arr := rfl
+/-- Semantic Conformance Theorem for {name}`withUniqueBuffer`. -/
+theorem withUniqueBuffer_eq_spec (a : ByteArray) (hu : Unique a) (f : (σ : Type) → MutByteArray σ → MutByteArray σ) :
+    withUniqueBuffer a hu f = withIsolatedBuffer.spec a f := rfl
 
 /--
 Zero-cost proof-driven bare in-place mutation on {name}`ByteArray`.
