@@ -38,10 +38,10 @@ Built-in fallback mappings for standard library primitives.
 Ensures bootstrap compatibility when attributes are parsed before full elaboration.
 -/
 private def builtinFallback (n : Name) : Option Name :=
-  if n == `ByteArray.setFast then some `ByteArray.set
-  else if n == `ByteArray.usetFast then some `ByteArray.uset
-  else if n == `ByteArray.MutByteArray.set then some `ByteArray.MutByteArray.setFallback
-  else if n == `ByteArray.MutByteArray.uset then some `ByteArray.MutByteArray.usetFallback
+  if n == `ByteArray.setFast || n == `ByteArray.setFast.impl then some `ByteArray.set
+  else if n == `ByteArray.usetFast || n == `ByteArray.usetFast.impl then some `ByteArray.uset
+  else if n == `ByteArray.MutByteArray.set || n == `ByteArray.MutByteArray.set.impl then some `ByteArray.MutByteArray.setFallback
+  else if n == `ByteArray.MutByteArray.uset || n == `ByteArray.MutByteArray.uset.impl then some `ByteArray.MutByteArray.usetFallback
   else none
 
 /--

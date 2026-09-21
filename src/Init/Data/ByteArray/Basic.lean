@@ -235,21 +235,59 @@ theorem withIsolatedBuffer_eq_spec (a : ByteArray) (f : (σ : Type) → MutByteA
     withIsolatedBuffer a f = withIsolatedBuffer.spec a f := rfl
 
 /--
-Zero-cost proof-driven bare in-place mutation on {name}`ByteArray`.
-Requires a proof of in-bounds index and a proof of uniqueness.
-Compiles to a bare memory write without reference counting checks or branches.
+Raw C primitive for bare in-place memory write on {name}`ByteArray`.
+Does not perform reference count checks or branches.
 -/
 @[extern "lean_byte_array_fset_fast"]
+opaque setFastCore (a : ByteArray) (i : @& Nat) (v : UInt8) : ByteArray
+
+/--
+Raw C primitive for bare in-place memory write on {name}`ByteArray` with {name}`USize` index.
+Does not perform reference count checks or branches.
+-/
+@[extern "lean_byte_array_set_fast"]
+opaque usetFastCore (a : ByteArray) (i : USize) (v : UInt8) : ByteArray
+
+/--
+Operational implementation of {lit}`setFast`: mounts the physical check-out gate.
+Before bare memory write, {name}`ensureExclusive.impl` verifies physical exclusivity.
+If shared (RC > 1), creates a private copy; if exclusive (RC = 1), zero allocation.
+-/
+@[noinline]
+def setFast.impl (a : ByteArray) (i : @& Nat) (v : UInt8)
+    (_h_bound : i < a.size) (_h_u : Unique a) : ByteArray :=
+  let checkedOut := ensureExclusive.impl a
+  setFastCore checkedOut i v
+
+/--
+Operational implementation of {lit}`usetFast`: mounts the physical check-out gate.
+-/
+@[noinline]
+def usetFast.impl (a : ByteArray) (i : USize) (v : UInt8)
+    (_h_bound : i.toNat < a.size) (_h_u : Unique a) : ByteArray :=
+  let checkedOut := ensureExclusive.impl a
+  usetFastCore checkedOut i v
+
+/--
+Proof-driven in-place mutation on {name}`ByteArray`.
+Requires a proof of in-bounds index and a proof of uniqueness.
+{name}`Unique` acts as an inductive admission control mechanism (verifying linear origin).
+At runtime, {name}`setFast.impl` ensures physical exclusivity at entry.
+Logically, it is definitionally equal to pure {name}`ByteArray.set`.
+-/
+@[implemented_by setFast.impl]
 def setFast (a : ByteArray) (i : @& Nat) (v : UInt8)
     (h_bound : i < a.size) (_h_u : Unique a) : ByteArray :=
   a.set i v h_bound
 
 /--
-Zero-cost proof-driven bare in-place mutation on {name}`ByteArray` with {name}`USize` index.
+Proof-driven in-place mutation on {name}`ByteArray` with {name}`USize` index.
 Requires a proof of in-bounds index and a proof of uniqueness.
-Compiles to a bare memory write without reference counting checks or branches.
+{name}`Unique` acts as an inductive admission control mechanism (verifying linear origin).
+At runtime, {name}`usetFast.impl` ensures physical exclusivity at entry.
+Logically, it is definitionally equal to pure {name}`ByteArray.uset`.
 -/
-@[extern "lean_byte_array_set_fast"]
+@[implemented_by usetFast.impl]
 def usetFast (a : ByteArray) (i : USize) (v : UInt8)
     (h_bound : i.toNat < a.size) (_h_u : Unique a) : ByteArray :=
   a.uset i v h_bound
