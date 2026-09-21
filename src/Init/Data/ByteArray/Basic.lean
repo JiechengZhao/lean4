@@ -269,10 +269,12 @@ def usetFast.impl (a : ByteArray) (i : USize) (v : UInt8)
   usetFastCore checkedOut i v
 
 /--
-Proof-driven in-place mutation on {name}`ByteArray`.
+Safe in-place mutation on {name}`ByteArray` with entry physical check-out gate.
 Requires a proof of in-bounds index and a proof of uniqueness.
 {name}`Unique` acts as an inductive admission control mechanism (verifying linear origin).
-At runtime, {name}`setFast.impl` ensures physical exclusivity at entry.
+At runtime, {name}`setFast.impl` ensures physical exclusivity at entry via {name}`ensureExclusive.impl`.
+Note: Unlike {name}`withIsolatedBuffer` which achieves true zero-cost (0-RC) writes in loops,
+{name}`setFast` performs a single-point runtime exclusivity check on each call, suitable for discrete updates.
 Logically, it is definitionally equal to pure {name}`ByteArray.set`.
 -/
 @[implemented_by setFast.impl]
@@ -281,10 +283,12 @@ def setFast (a : ByteArray) (i : @& Nat) (v : UInt8)
   a.set i v h_bound
 
 /--
-Proof-driven in-place mutation on {name}`ByteArray` with {name}`USize` index.
+Safe in-place mutation on {name}`ByteArray` with {name}`USize` index and entry physical check-out gate.
 Requires a proof of in-bounds index and a proof of uniqueness.
 {name}`Unique` acts as an inductive admission control mechanism (verifying linear origin).
-At runtime, {name}`usetFast.impl` ensures physical exclusivity at entry.
+At runtime, {name}`usetFast.impl` ensures physical exclusivity at entry via {name}`ensureExclusive.impl`.
+Note: Unlike {name}`withIsolatedBuffer` which achieves true zero-cost (0-RC) writes in loops,
+{name}`usetFast` performs a single-point runtime exclusivity check on each call, suitable for discrete updates.
 Logically, it is definitionally equal to pure {name}`ByteArray.uset`.
 -/
 @[implemented_by usetFast.impl]

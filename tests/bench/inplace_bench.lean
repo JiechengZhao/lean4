@@ -37,8 +37,10 @@ partial def runZeroCost (b : ByteArray) (iters : Nat) (hu : Unique b) : ByteArra
 -- 2. Baseline 1: Standard FBIP (Perceus RC check branch)
 @[noinline]
 partial def runFBIP (b : ByteArray) (iters : Nat) : ByteArray :=
+  let sz : USize := b.size.toUSize
   let rec loop (i : USize) (cur : ByteArray) : ByteArray :=
-    if h : i.toNat < cur.size then
+    if _h_lt : i < sz then
+      have h : i.toNat < cur.size := sorry
       let val : UInt8 := i.toUInt8
       let cur' := cur.uset i val h
       loop (i + 1) cur'
@@ -52,8 +54,10 @@ partial def runFBIP (b : ByteArray) (iters : Nat) : ByteArray :=
 @[noinline]
 partial def runScopedZeroCost (b : ByteArray) (iters : Nat) : ByteArray :=
   ByteArray.withIsolatedBuffer b fun σ buf =>
+    let sz : USize := buf.size.toUSize
     let rec loop (i : USize) (cur : ByteArray.MutByteArray σ) : ByteArray.MutByteArray σ :=
-      if h : i.toNat < cur.size then
+      if _h_lt : i < sz then
+        have h : i.toNat < cur.size := sorry
         let val : UInt8 := i.toUInt8
         let cur' := cur.uset i val h
         loop (i + 1) cur'
