@@ -1,0 +1,9 @@
+unique_forgery_rejection.lean:8:2-8:24: error(lean.unknownIdentifier): Unknown constant `ByteArray.Unique.intro`
+unique_forgery_rejection.lean:12:2-12:21: error(lean.unknownIdentifier): Unknown constant `ByteArray.Unique.mk`
+unique_forgery_rejection.lean:16:2-16:24: error: Type mismatch
+  ByteArray.Unique.empty
+has type
+  ByteArray.empty.Unique
+but is expected to have type
+  buf.Unique
+unique_forgery_rejection.lean:20:2-20:26: error(lean.unknownIdentifier): Unknown constant `ByteArray.Unique.isolate`

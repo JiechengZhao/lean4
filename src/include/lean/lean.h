@@ -1321,6 +1321,46 @@ static inline lean_obj_res lean_byte_array_fset(lean_obj_arg a, b_lean_obj_arg i
     return lean_byte_array_uset(a, lean_unbox(i), b);
 }
 
+#ifndef lean_to_byte_array
+#define lean_to_byte_array(o) lean_to_sarray(o)
+#endif
+
+/* Proof-driven zero-cost in-place mutation primitive.
+   Bypasses lean_is_exclusive, lean_sarray_ensure_exclusive, atomic operations and copying. */
+static inline lean_object* lean_byte_array_set_fast(lean_object* a, size_t i, uint8_t v) {
+    lean_to_byte_array(a)->m_data[i] = v;
+    return a;
+}
+
+static inline lean_obj_res lean_byte_array_fset_fast(lean_obj_arg a, b_lean_obj_arg i, uint8_t v) {
+    lean_to_byte_array(a)->m_data[lean_unbox(i)] = v;
+    return a;
+}
+
+/* Scoped Region zero-cost in-place write primitive.
+   Direct bare memory write within a verified Rank-2 scoped region. */
+static inline lean_obj_res lean_byte_array_mut_uset(lean_obj_arg a, size_t i, uint8_t v) {
+    lean_to_byte_array(a)->m_data[i] = v;
+    return a;
+}
+
+static inline lean_obj_res lean_byte_array_mut_fset(lean_obj_arg a, b_lean_obj_arg i, uint8_t v) {
+    lean_to_byte_array(a)->m_data[lean_unbox(i)] = v;
+    return a;
+}
+
+static inline uint8_t lean_byte_array_mut_uget(b_lean_obj_arg a, size_t i) {
+    return lean_to_byte_array(a)->m_data[i];
+}
+
+static inline uint8_t lean_byte_array_mut_fget(b_lean_obj_arg a, b_lean_obj_arg i) {
+    return lean_to_byte_array(a)->m_data[lean_unbox(i)];
+}
+
+static inline lean_obj_res lean_byte_array_ensure_exclusive(lean_obj_arg a) {
+    return lean_sarray_ensure_exclusive(a);
+}
+
 /* FloatArray (special case of Array of Scalars) */
 
 LEAN_EXPORT lean_obj_res lean_float_array_mk(lean_obj_arg a);

@@ -12,6 +12,7 @@ public import Lean.Compiler.ClosedTermCache
 public import Lean.Compiler.ExternAttr
 public import Lean.Compiler.ImplementedByAttr
 public import Lean.Compiler.NeverExtractAttr
+public import Lean.Compiler.ScopedInplaceAttr
 public import Lean.Compiler.IR
 public import Lean.Compiler.CSimpAttr
 public import Lean.Compiler.FFI

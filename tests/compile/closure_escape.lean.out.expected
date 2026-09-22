@@ -1,0 +1,3 @@
+capturedVal: 1
+mutatedVal: 77
+Closure escape defense passed safely with zero use-after-free!
