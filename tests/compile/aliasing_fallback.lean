@@ -1,5 +1,5 @@
 /-!
-Tests graceful fallback in LCNF `zeroCostInplace` pass when an isolated buffer is aliased in scope.
+Tests graceful fallback in LCNF `scopedInplace` pass when an isolated buffer is aliased in scope.
 Verifies that forking a buffer into multiple `setFast` calls triggers automatic downgrade
 to Perceus copy-on-write (`ByteArray.set`), preventing data corruption.
 -/

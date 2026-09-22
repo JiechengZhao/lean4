@@ -25,7 +25,7 @@ public import Lean.Compiler.LCNF.ResetReuse
 public import Lean.Compiler.LCNF.SimpCase
 public import Lean.Compiler.LCNF.InferBorrow
 public import Lean.Compiler.LCNF.ExplicitBoxing
-public import Lean.Compiler.LCNF.ZeroCostInplace
+public import Lean.Compiler.LCNF.ScopedInplace
 public import Lean.Compiler.LCNF.ExplicitRC
 public import Lean.Compiler.LCNF.CoalesceRC
 public import Lean.Compiler.LCNF.Toposort
@@ -149,7 +149,7 @@ def builtinPassManager : PassManager := {
     simpCase,
     inferBorrow,
     explicitBoxing,
-    zeroCostInplace,
+    scopedInplace,
     explicitRc,
     expandResetReuse,
     coalesceRC,

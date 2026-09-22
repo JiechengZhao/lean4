@@ -1,7 +1,7 @@
 import Init.Data.ByteArray.Basic
 
 /-!
-Tests that the linear-time DAG-based alias closure analysis in `ZeroCostInplace`
+Tests that the linear-time DAG-based alias closure analysis in `scopedInplace`
 correctly tracks multi-hop transitive dependencies across tuples, branches, and join points
 without exponential/quadratic blowup, properly detecting when an alias escapes.
 -/

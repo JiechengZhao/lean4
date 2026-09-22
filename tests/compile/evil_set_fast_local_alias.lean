@@ -3,7 +3,7 @@ import Init.Data.ByteArray.Basic
 /-!
 Tests that `ByteArray.setFast` is completely immune to intra-procedural aliasing.
 When `let backup := a` creates a local alias before calling `setFast`,
-the compiler pass `zeroCostInplace` detects that `backup` is in the transitive alias set
+the compiler pass `scopedInplace` detects that `backup` is in the transitive alias set
 and safely downgrades `setFast` to standard Perceus `ByteArray.set`.
 At runtime, `backup` remains pristine with its initial value (zero dirty write).
 -/

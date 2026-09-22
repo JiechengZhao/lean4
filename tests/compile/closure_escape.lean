@@ -1,6 +1,6 @@
 /-!
 Tests escape defense when an isolated buffer is captured in an escaping closure.
-Verifies that LCNF `zeroCostInplace` pass detects that the buffer escapes into the closure,
+Verifies that LCNF `scopedInplace` pass detects that the buffer escapes into the closure,
 downgrading `setFast` to safe Perceus copy-on-write `ByteArray.set` to prevent
 use-after-free and data corruption.
 -/

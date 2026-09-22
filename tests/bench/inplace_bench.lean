@@ -70,8 +70,9 @@ partial def runFBIP (b : ByteArray) (iters : Nat) : ByteArray :=
   else
     b
 
+-- 1. Optimized: Scoped In-Place Mutation (RC-Free Inner Loop)
 @[noinline]
-partial def runScopedZeroCost (b : ByteArray) (iters : Nat) : ByteArray :=
+partial def runScopedInplace (b : ByteArray) (iters : Nat) : ByteArray :=
   ByteArray.withIsolatedBuffer b fun σ buf =>
     if h_buf : buf.size < USize.size then
       let sz := USize.ofNatLT buf.size h_buf
@@ -178,9 +179,9 @@ def main (args : List String) : IO Unit := do
   let b_c := allocZeroed sz
   let _ ← timeIt "Handwritten C (-O3)" totalBytes (fun _ => runRawC b_c iters)
 
-  -- Optimized: Proof-Driven Zero-Cost (Rank-2 Scoped Pattern withIsolatedBuffer)
+  -- Optimized: Scoped In-Place Mutation (Rank-2 Scoped Pattern withIsolatedBuffer)
   let b_opt := allocZeroed sz
-  let _ ← timeIt "Optimized (Rank-2 Scoped In-Place)" totalBytes (fun _ => runScopedZeroCost b_opt iters)
+  let _ ← timeIt "Optimized (Rank-2 Scoped In-Place)" totalBytes (fun _ => runScopedInplace b_opt iters)
 
   -- Baseline 1: Standard Perceus FBIP
   let b_fbip := allocZeroed sz

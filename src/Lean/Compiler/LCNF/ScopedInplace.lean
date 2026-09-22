@@ -11,24 +11,24 @@ public import Lean.Compiler.LCNF.PassManager
 import Lean.Compiler.LCNF.DependsOn
 import Lean.Compiler.LCNF.PhaseExt
 import Lean.Compiler.LCNF.PrettyPrinter
-import Lean.Compiler.ZeroCostInplaceAttr
+import Lean.Compiler.ScopedInplaceAttr
 
 public section
 
 namespace Lean.Compiler.LCNF
 
 /-!
-# Zero-Cost In-Place Mutation Optimization Pass
+# Scoped In-Place Mutation Optimization Pass
 
 This pass inspects impure LCNF code for calls to functions registered with
-the `@[zero_cost_inplace fallbackFn]` attribute (such as `ByteArray.MutByteArray.uset`
+the `@[scoped_inplace fallbackFn]` attribute (such as `ByteArray.MutByteArray.uset`
 or `ByteArray.setFast`).
 
 It performs a transitive alias and escape analysis on the target buffer. If the target
 buffer or any of its aliases are captured in a closure or used again in the continuation `k`,
 the call is safely rewritten to `fallbackFn` (standard Perceus copy-on-write).
-Otherwise, the call is preserved as the zero-cost in-place primitive, which subsequent
-passes (like `explicitRc`) will compile with zero reference counting overhead.
+Otherwise, the call is preserved as the scoped in-place primitive, which subsequent
+passes (like `explicitRc`) will compile without hot-loop reference counting overhead (RC-free).
 -/
 
 /--
@@ -156,16 +156,16 @@ def padArgs (args : Array (Arg .impure)) (targetSize : Nat) : Array (Arg .impure
   loop args
 
 /--
-Transform `code` to rewrite aliased/escaping zero-cost in-place mutations to their safe fallbacks.
+Transform `code` to rewrite aliased/escaping scoped in-place mutations to their safe fallbacks.
 Uses the precomputed forward dependency DAG `g` to evaluate alias closures in linear time.
 -/
-partial def Code.zeroCostInplace (g : FVarIdMap (Array FVarId)) (code : Code .impure) : CompilerM (Code .impure) := do
+partial def Code.scopedInplace (g : FVarIdMap (Array FVarId)) (code : Code .impure) : CompilerM (Code .impure) := do
   match code with
   | .let decl k =>
     modifyLCtx fun lctx => lctx.addLetDecl decl
-    let k ← k.zeroCostInplace g
+    let k ← k.scopedInplace g
     if let .fap f args := decl.value then
-      if let some fallbackF := getZeroCostInplaceFallback? (← getEnv) f then
+      if let some fallbackF := getScopedInplaceFallback? (← getEnv) f then
         let targetInfo : Option (Nat × FVarId) := Id.run do
           for i in [0:args.size] do
             if let .fvar fvarId := args[i]! then
@@ -181,34 +181,39 @@ partial def Code.zeroCostInplace (g : FVarIdMap (Array FVarId)) (code : Code .im
     return code.updateLet! decl k
   | .jp decl k =>
     modifyLCtx fun lctx => lctx.addFunDecl decl
-    let value ← decl.value.zeroCostInplace g
+    let value ← decl.value.scopedInplace g
     let decl ← decl.updateValue value
-    let k ← k.zeroCostInplace g
+    let k ← k.scopedInplace g
     return code.updateFun! decl k
   | .cases cs =>
-    let alts ← cs.alts.mapMonoM (·.mapCodeM (Code.zeroCostInplace g))
+    let alts ← cs.alts.mapMonoM (·.mapCodeM (Code.scopedInplace g))
     return code.updateAlts! alts
   | .jmp .. | .return .. | .unreach .. => return code
   | .uset (k := k) .. | .sset (k := k) .. | .oset (k := k) ..
   | .inc (k := k) .. | .dec (k := k) .. | .setTag (k := k) .. | .del (k := k) .. =>
-    let k ← k.zeroCostInplace g
+    let k ← k.scopedInplace g
     return code.updateCont! k
 
-def Decl.zeroCostInplace (decl : Decl .impure) : CompilerM (Decl .impure) := do
+def Decl.scopedInplace (decl : Decl .impure) : CompilerM (Decl .impure) := do
   for param in decl.params do
     modifyLCtx fun lctx => lctx.addParam param
   let value ← match decl.value with
     | .code c =>
       let g := buildForwardDepGraph c
-      let c ← Code.zeroCostInplace g c
+      let c ← Code.scopedInplace g c
       pure (.code c)
     | .extern .. => pure decl.value
   return { decl with value }
 
-def zeroCostInplace : Pass :=
-  Pass.mkPerDeclaration `zeroCostInplace .impure Decl.zeroCostInplace 0
+def scopedInplace : Pass :=
+  Pass.mkPerDeclaration `scopedInplace .impure Decl.scopedInplace 0
 
 builtin_initialize
-  registerTraceClass `Compiler.zeroCostInplace (inherited := true)
+  registerTraceClass `Compiler.scopedInplace (inherited := true)
+
+-- Backward compatibility aliases
+def zeroCostInplace : Pass := scopedInplace
+def Decl.zeroCostInplace := Decl.scopedInplace
+def Code.zeroCostInplace := Code.scopedInplace
 
 end Lean.Compiler.LCNF

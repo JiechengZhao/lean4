@@ -45,4 +45,4 @@ public import Lean.Compiler.LCNF.ReduceArity
 public import Lean.Compiler.LCNF.Probing
 public import Lean.Compiler.LCNF.Irrelevant
 public import Lean.Compiler.LCNF.SplitSCC
-public import Lean.Compiler.LCNF.ZeroCostInplace
+public import Lean.Compiler.LCNF.ScopedInplace

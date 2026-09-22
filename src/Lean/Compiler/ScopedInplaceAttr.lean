@@ -14,14 +14,14 @@ public section
 namespace Lean.Compiler
 
 /--
-Parametric attribute for proof-driven zero-cost in-place mutation primitives.
+Parametric attribute for scoped in-place mutation primitives.
 Stores the Perceus fallback function name to which the compiler will safely
 downgrade if aliasing, escaping, or sharing is detected.
 -/
 @[builtin_doc]
-builtin_initialize zeroCostInplaceAttr : ParametricAttribute Name ← registerParametricAttribute {
-  name := `zero_cost_inplace
-  descr := "marks a function as a proof-driven zero-cost in-place mutation primitive with an automatic Perceus fallback"
+builtin_initialize scopedInplaceAttr : ParametricAttribute Name ← registerParametricAttribute {
+  name := `scoped_inplace
+  descr := "marks a function as a scoped in-place mutation primitive with an automatic Perceus fallback"
   getParam := fun declName stx => do
     let decl ← getConstInfo declName
     let fnNameStx ← Attribute.Builtin.getIdent stx
@@ -29,7 +29,7 @@ builtin_initialize zeroCostInplaceAttr : ParametricAttribute Name ← registerPa
       let fnName ← Elab.realizeGlobalConstNoOverloadWithInfo fnNameStx
       let fnDecl ← getConstVal fnName
       if decl.name == fnDecl.name then
-        throwError "Invalid `zero_cost_inplace` argument `{fnName}`: Definition cannot fall back to itself"
+        throwError "Invalid `scoped_inplace` argument `{fnName}`: Definition cannot fall back to itself"
       return fnName
 }
 
@@ -45,22 +45,30 @@ private def builtinFallback (n : Name) : Option Name :=
   else none
 
 /--
-Retrieves the Perceus fallback function for a declaration tagged with `@[zero_cost_inplace]`.
-Returns `some fallbackFn` if the declaration is a zero-cost in-place primitive,
+Retrieves the Perceus fallback function for a declaration tagged with `@[scoped_inplace]`.
+Returns `some fallbackFn` if the declaration is a scoped in-place primitive,
 or `none` otherwise.
 -/
-public partial def getZeroCostInplaceFallback? (env : Environment) (n : Name) : Option Name :=
+public partial def getScopedInplaceFallback? (env : Environment) (n : Name) : Option Name :=
   if let some fallback := builtinFallback n then
     some fallback
-  else if let some fallback := zeroCostInplaceAttr.getParam? env n then
+  else if let some fallback := scopedInplaceAttr.getParam? env n then
     some fallback
   else if n.isInternal then
-    getZeroCostInplaceFallback? env n.getPrefix
+    getScopedInplaceFallback? env n.getPrefix
   else
     none
 
-/-- Backward-compatible predicate checking if a declaration is a zero-cost in-place primitive. -/
+/-- Backward-compatible predicate checking if a declaration is a scoped in-place primitive. -/
+public def hasScopedInplaceAttribute (env : Environment) (n : Name) : Bool :=
+  getScopedInplaceFallback? env n matches some _
+
+/-- Compatibility alias for `getScopedInplaceFallback?`. -/
+public def getZeroCostInplaceFallback? (env : Environment) (n : Name) : Option Name :=
+  getScopedInplaceFallback? env n
+
+/-- Compatibility alias for `hasScopedInplaceAttribute`. -/
 public def hasZeroCostInplaceAttribute (env : Environment) (n : Name) : Bool :=
-  getZeroCostInplaceFallback? env n matches some _
+  hasScopedInplaceAttribute env n
 
 end Lean.Compiler

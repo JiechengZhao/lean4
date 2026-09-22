@@ -1,9 +1,8 @@
 import Init.Data.ByteArray.Basic
 
 /-!
-Tests that `ZeroCostInplace` correctly detects local aliasing on `MutByteArray`
-within `withIsolatedBuffer` and downgrades `MutByteArray.set` / `MutByteArray.uset`
-to `setFallback` / `usetFallback` (Perceus FBIP COW).
+Tests that `scopedInplace` correctly detects local aliasing on `MutByteArray`
+and safely downgrades mutation to Copy-on-Write (COW), preventing dirty writes.
 
 Verifies:
 1. `let backup := buf` creates an alias in the LCNF forward dependency graph.
