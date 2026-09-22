@@ -1,7 +1,7 @@
 import Init.Data.ByteArray.Basic
 
 /-!
-Tests proof-driven zero-cost in-place mutation on `ByteArray`.
+Tests scoped in-place mutation and checked operations on `ByteArray`.
 Verifies that `ByteArray.setFast`, `ByteArray.usetFast`, and `ByteArray.fillFast`
 execute correctly with constructive uniqueness proofs.
 -/

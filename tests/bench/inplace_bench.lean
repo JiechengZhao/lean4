@@ -1,6 +1,6 @@
 /-!
-Benchmark: Proof-Driven Zero-Cost In-Place Mutation vs FBIP vs COW vs Raw C
-Compares 4 memory mutation regimes on a large ByteArray buffer.
+Benchmark: Scoped In-Place Mutation vs FBIP vs COW vs Raw C
+Compares memory mutation regimes on ByteArray buffers with hardware PMU metrics.
 -/
 
 @[extern "lean_bench_alloc_zeroed"]
@@ -11,6 +11,12 @@ opaque runRawC (b : ByteArray) (iters : @& Nat) : ByteArray
 
 @[extern "lean_bench_checksum"]
 opaque checksum (b : @& ByteArray) : UInt64
+
+@[extern "lean_bench_perf_start"]
+opaque perfStart : IO Unit
+
+@[extern "lean_bench_perf_stop"]
+opaque perfStop : IO String
 
 open ByteArray
 
@@ -24,25 +30,7 @@ def mkUniqueArray (sz : Nat) : (a : ByteArray) ×' Unique a :=
       ⟨cur, hu⟩
   loop 0 ByteArray.empty Unique.empty
 
--- 1. Optimized: Proof-Driven Zero-Cost In-Place
-@[noinline]
-partial def runZeroCost (b : ByteArray) (iters : Nat) (hu : Unique b) : ByteArray :=
-  let rec loop (i : USize) (cur : ByteArray) (hu : ByteArray.Unique cur) : (b : ByteArray) ×' (ByteArray.Unique b) :=
-    if h : i.toNat < cur.size then
-      let val : UInt8 := i.toUInt8
-      let cur' := cur.usetFast i val h hu
-      let hu' := ByteArray.usetFast_unique cur i val h hu
-      loop (i + 1) cur' hu'
-    else
-      ⟨cur, hu⟩
-  let rec outer (n : Nat) (cur : ByteArray) (hu : ByteArray.Unique cur) : ByteArray :=
-    if n == 0 then cur
-    else
-      let ⟨next, next_u⟩ := loop 0 cur hu
-      outer (n - 1) next next_u
-  outer iters b hu
-
--- 2. Baseline 1: Standard FBIP (Perceus RC check branch)
+-- 1. Baseline 1: Standard FBIP (Perceus RC check branch)
 @[noinline]
 partial def runFBIP (b : ByteArray) (iters : Nat) : ByteArray :=
   if h_b : b.size < USize.size then
@@ -70,7 +58,7 @@ partial def runFBIP (b : ByteArray) (iters : Nat) : ByteArray :=
   else
     b
 
--- 1. Optimized: Scoped In-Place Mutation (RC-Free Inner Loop)
+-- 2. Optimized: Scoped In-Place Mutation (RC-Free Inner Loop)
 @[noinline]
 partial def runScopedInplace (b : ByteArray) (iters : Nat) : ByteArray :=
   ByteArray.withIsolatedBuffer b fun σ buf =>
@@ -99,12 +87,24 @@ partial def runScopedInplace (b : ByteArray) (iters : Nat) : ByteArray :=
     else
       buf
 
--- 3. Micro-benchmark: setFast vs native set (Quantifying proof-friendly vs native set)
+-- 3. Micro-benchmark: Isolated Gate vs Proof-Friendly vs Native Set
 @[noinline]
 partial def runSetBench (b : ByteArray) (iters : Nat) : ByteArray :=
   let rec loop (i : Nat) (cur : ByteArray) : ByteArray :=
     if h : i < cur.size then
       let cur' := cur.set i 0x42 h
+      loop (i + 1) cur'
+    else cur
+  let rec outer (n : Nat) (cur : ByteArray) : ByteArray :=
+    if n == 0 then cur
+    else outer (n - 1) (loop 0 cur)
+  outer iters b
+
+@[noinline]
+partial def runCheckedSetBench (b : ByteArray) (iters : Nat) : ByteArray :=
+  let rec loop (i : Nat) (cur : ByteArray) : ByteArray :=
+    if h : i < cur.size then
+      let cur' := (ensureExclusive cur).set i 0x42 h
       loop (i + 1) cur'
     else cur
   let rec outer (n : Nat) (cur : ByteArray) : ByteArray :=
@@ -132,7 +132,7 @@ partial def runSetFastBench (b : ByteArray) (iters : Nat) (hu : Unique b) : Byte
         cur
   outer iters b hu
 
--- 3. Baseline 2: Degraded Copy-on-Write (shared reference forces copy on write)
+-- 4. Baseline 2: Degraded Copy-on-Write (shared reference forces copy on write)
 @[noinline]
 partial def runCOW (b : ByteArray) (iters : Nat) : ByteArray :=
   let rec loop (i : USize) (cur : ByteArray) (shared : ByteArray) : ByteArray × ByteArray :=
@@ -152,10 +152,16 @@ partial def runCOW (b : ByteArray) (iters : Nat) : ByteArray :=
 @[extern "lean_bench_eval_sink"]
 opaque evalSink (b : ByteArray) : BaseIO ByteArray
 
-def timeIt (name : String) (bytes : Nat) (act : Unit → ByteArray) : IO ByteArray := do
+structure BenchResult where
+  res : ByteArray
+  perfStr : String
+
+def timeIt (name : String) (bytes : Nat) (act : Unit → ByteArray) : IO BenchResult := do
+  perfStart
   let t0 ← IO.monoNanosNow
   let res ← evalSink (act ())
   let t1 ← IO.monoNanosNow
+  let perfData ← perfStop
   let ns := t1 - t0
   let ms := ns.toFloat / 1000000.0
   let sec := ns.toFloat / 1000000000.0
@@ -163,7 +169,7 @@ def timeIt (name : String) (bytes : Nat) (act : Unit → ByteArray) : IO ByteArr
   let throughput := if sec > 0.0 then gb / sec else 0.0
   let chk := checksum res
   IO.println s!"| {name} | {ms.toString} ms | {throughput.toString} GB/s | (chk: {chk.toNat}) |"
-  return res
+  return { res := res, perfStr := s!"| {name} | {perfData} |" }
 
 def main (args : List String) : IO Unit := do
   let szMb := match args with | s :: _ => s.toNat?.getD 16 | _ => 16
@@ -177,15 +183,23 @@ def main (args : List String) : IO Unit := do
 
   -- Baseline C
   let b_c := allocZeroed sz
-  let _ ← timeIt "Handwritten C (-O3)" totalBytes (fun _ => runRawC b_c iters)
+  let r_c ← timeIt "Handwritten C (-O3)" totalBytes (fun _ => runRawC b_c iters)
 
   -- Optimized: Scoped In-Place Mutation (Rank-2 Scoped Pattern withIsolatedBuffer)
   let b_opt := allocZeroed sz
-  let _ ← timeIt "Optimized (Rank-2 Scoped In-Place)" totalBytes (fun _ => runScopedInplace b_opt iters)
+  let r_opt ← timeIt "Optimized (Rank-2 Scoped In-Place)" totalBytes (fun _ => runScopedInplace b_opt iters)
 
   -- Baseline 1: Standard Perceus FBIP
   let b_fbip := allocZeroed sz
-  let _ ← timeIt "Baseline 1 (Perceus FBIP is_exclusive)" totalBytes (fun _ => runFBIP b_fbip iters)
+  let r_fbip ← timeIt "Baseline 1 (Perceus FBIP is_exclusive)" totalBytes (fun _ => runFBIP b_fbip iters)
+
+  IO.println ""
+  IO.println "=== Hardware Performance Counters (Linux PMU via perf_event_open) ==="
+  IO.println "| Paradigm | Instructions | Cycles | IPC | Branches | Branch Misses | Cache Refs | Cache Misses |"
+  IO.println "| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |"
+  IO.println r_c.perfStr
+  IO.println r_opt.perfStr
+  IO.println r_fbip.perfStr
 
   -- Baseline 2: Degraded COW (run on 64 KB buffer with 10 passes to measure in sensible time)
   let cowSz : Nat := 64 * 1024
@@ -196,15 +210,17 @@ def main (args : List String) : IO Unit := do
   let b_cow := allocZeroed cowSz
   let _ ← timeIt "Degraded COW (shared RC > 1)" cowBytes (fun _ => runCOW b_cow cowIters)
 
-  -- Micro-benchmark: Single-Point Checked Mutation (setFast vs Native set)
+  -- Micro-benchmark: Single-Point Checked Mutation (set vs checked set vs setFast)
   let setSz : Nat := 1024 * 1024
   let setIters : Nat := 4
   let setBytes := setSz * setIters
   IO.println ""
-  IO.println s!"=== Micro-benchmark: Discrete Checked Mutation ({setSz / (1024 * 1024)} MB Buffer, {setIters} passes) ==="
+  IO.println s!"=== Micro-benchmark: Discrete Checked Mutation Breakdown ({setSz / (1024 * 1024)} MB Buffer, {setIters} passes) ==="
   IO.println "| Operation | Elapsed Time | Throughput | Verification |"
   IO.println "| :--- | :--- | :--- | :--- |"
   let b_set := allocZeroed setSz
-  let _ ← timeIt "Native ByteArray.set (Perceus FBIP)" setBytes (fun _ => runSetBench b_set setIters)
+  let _ ← timeIt "1. Native ByteArray.set (Perceus FBIP)" setBytes (fun _ => runSetBench b_set setIters)
+  let b_cset := allocZeroed setSz
+  let _ ← timeIt "2. Gate-Only Checked set (ensureExclusive + set, no proof)" setBytes (fun _ => runCheckedSetBench b_cset setIters)
   let ⟨b_setFast, hu⟩ := mkUniqueArray setSz
-  let _ ← timeIt "ByteArray.setFast (Proof-Friendly Checked)" setBytes (fun _ => runSetFastBench b_setFast setIters hu)
+  let _ ← timeIt "3. Proof-Carrying ByteArray.setFast (with Unique proof)" setBytes (fun _ => runSetFastBench b_setFast setIters hu)

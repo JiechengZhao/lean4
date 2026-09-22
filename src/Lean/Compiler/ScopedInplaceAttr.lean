@@ -59,16 +59,8 @@ public partial def getScopedInplaceFallback? (env : Environment) (n : Name) : Op
   else
     none
 
-/-- Backward-compatible predicate checking if a declaration is a scoped in-place primitive. -/
+/-- Predicate checking if a declaration is a scoped in-place primitive. -/
 public def hasScopedInplaceAttribute (env : Environment) (n : Name) : Bool :=
   getScopedInplaceFallback? env n matches some _
-
-/-- Compatibility alias for `getScopedInplaceFallback?`. -/
-public def getZeroCostInplaceFallback? (env : Environment) (n : Name) : Option Name :=
-  getScopedInplaceFallback? env n
-
-/-- Compatibility alias for `hasScopedInplaceAttribute`. -/
-public def hasZeroCostInplaceAttribute (env : Environment) (n : Name) : Bool :=
-  hasScopedInplaceAttribute env n
 
 end Lean.Compiler

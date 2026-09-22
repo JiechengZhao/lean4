@@ -211,9 +211,4 @@ def scopedInplace : Pass :=
 builtin_initialize
   registerTraceClass `Compiler.scopedInplace (inherited := true)
 
--- Backward compatibility aliases
-def zeroCostInplace : Pass := scopedInplace
-def Decl.zeroCostInplace := Decl.scopedInplace
-def Code.zeroCostInplace := Code.scopedInplace
-
 end Lean.Compiler.LCNF
