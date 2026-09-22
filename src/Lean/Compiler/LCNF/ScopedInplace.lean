@@ -63,19 +63,22 @@ partial def collectFreeVarsInCode (c : Code pu) : FVarIdSet :=
       let bound := bound.insert decl.fvarId
       visit k bound used
     | .jp decl k | .fun decl k _ =>
-      let bound := bound.insert decl.fvarId
-      let (bound, used) := decl.params.foldl (init := (bound, used)) fun (b, u) p => (b.insert p.fvarId, u)
-      let (bound, used) := visit decl.value bound used
-      visit k bound used
+      let boundWithFn := bound.insert decl.fvarId
+      let boundInBody := decl.params.foldl (init := boundWithFn) fun b p => b.insert p.fvarId
+      let (_, used) := visit decl.value boundInBody used
+      visit k boundWithFn used
     | .cases cs =>
       let used := used.insert cs.discr
-      cs.alts.foldl (init := (bound, used)) fun (b, u) alt =>
+      let used := cs.alts.foldl (init := used) fun u alt =>
         match alt with
         | .alt _ ps k _ =>
-          let b := ps.foldl (init := b) fun b p => b.insert p.fvarId
-          visit k b u
+          let b' := ps.foldl (init := bound) fun b p => b.insert p.fvarId
+          let (_, u') := visit k b' u
+          u'
         | .default k | .ctorAlt _ k _ =>
-          visit k b u
+          let (_, u') := visit k bound u
+          u'
+      (bound, used)
     | .jmp fvarId args =>
       let used := used.insert fvarId
       let used := args.foldl (init := used) fun s arg =>
